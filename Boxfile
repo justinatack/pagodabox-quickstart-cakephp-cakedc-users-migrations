@@ -19,6 +19,7 @@ web1:
   after_build:
     - "mv pagoda/database.php app/Config/database.php"
     - "mv pagoda/core.php app/Config/core.php"
+    - "mv pagoda/email.php app/Config/email.php"
   before_deploy:
     - "bash app/Console/cake Migrations.migration run all -p Migrations"
     - "bash app/Console/cake Migrations.migration run all --plugin Users"
