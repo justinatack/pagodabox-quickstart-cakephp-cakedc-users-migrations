@@ -1,19 +1,17 @@
 language: php
- 
+
 php:
-  - 5.2.8
   - 5.3
   - 5.4
- 
+
+env:
+  - CAKE_VERSION=master
+  - CAKE_VERSION=2.5
+
 before_script:
-  - git clone --depth 1 git://github.com/cakephp/cakephp ../cakephp && cd ../cakephp
-  - git clone --depth 1 --branch develop git://github.com/CakeDC/search plugins/search
-  - cd plugins/Search
-  - git submodule update --init --recursive
-  - cd ../../
-  - mv ../Users plugins/Users
+  - git clone --depth 1 --branch $CAKE_VERSION git://github.com/cakephp/cakephp ../cakephp && cd ../cakephp
+  - cp -R ../search plugins/Search
   - sh -c "mysql -e 'CREATE DATABASE cakephp_test;'"
-  - chmod -R 777 ../cakephp/app/tmp
   - echo "<?php
     class DATABASE_CONFIG {
     public \$test = array(
@@ -23,10 +21,10 @@ before_script:
       'login' => 'travis',
       'persistent' => false,
     );
-    }" > ../cakephp/app/Config/database.php
- 
+    }" > app/Config/database.php
+  - cd app
 script:
-  - ./lib/Cake/Console/cake test Users AllUsersPlugin --stderr
- 
+  - ../lib/Cake/Console/cake test Search AllSearchPlugin --stderr
+
 notifications:
   email: false

@@ -1,317 +1,319 @@
-# Users Plugin for CakePHP #
+# Search Plugin for CakePHP #
 
-for cake 2.x
+Version 2.3 for cake 2.x
 
-The users plugin is for allowing users to register and login manage their profile. It also allows admins to manage the users.
+The Search plugin allows you to make any kind of data searchable, enabling you to implement a robust searching rapidly.
 
-The plugin is thought as a base to extend your app specific users controller and model from.
+The Search plugin is an easy way to include search into your application, and provides you with a paginate-able search in any controller.
 
-That it works out of the box does not mean it is thought to be used exactly like it is but to provide you a kick start. You will have to extend the plugin on app level to customize it. Read the how to use it instructions carefully.
+It supports simple methods to search inside models using strict and non-strict comparing, but also allows you to implement any complex type of searching.
 
-## Installation ##
+## UPDATE for 2.3
 
-The plugin is pretty easy to set up, all you need to do is to copy it to you application plugins folder and load the needed tables. You can create database tables using either the schema shell or the [CakeDC Migrations plugin](http://github.com/CakeDC/migrations):
+* `defaultValue` is now available in case no value has been passed and we need to trigger the filters.
+* Confusing and redundant types have been removed. Either use type 'value' (exact match), 'like' (partial match) or expression/subquery/query.
+* Query strings now work properly. `$this->passedArgs` has been deprecated. Please use `$this->Prg->parsedParams()` instead from now on.
 
-	./Console/cake schema create users --plugin Users
+## UPDATE for 2.2
 
-or
+* `emptyValue` is now available for fields to make it work with "default NULL" fields and `allowEmpty` set to true. See example below.
 
-	./Console/cake Migrations.migration run all --plugin Users
+## Sample of usage ##
 
-You will also need the [CakeDC Search plugin](http://github.com/CakeDC/search), just grab it and put it into your application's plugin folder.
+An example of how to implement complex searching in your application.
 
-## How to use it ##
-
-You can use the plugin as it comes if you're happy with it or, more common, extend your app specific user implementation from the plugin.
-
-The plugin itself is already capable of:
-
-* User registration (Enable by default)
-* Account verification by a token sent via email
-* User login (email / password)
-* Password reset based on requesting a token by email and entering a new password
-* Simple profiles for users
-* User search (requires the CakeDC Search plugin)
-* User management using the "admin" section (add / edit / delete)
-* Simple roles management
-
-The default password reset process requires the user to enter his email address, an email is sent to the user with a link and a token. When the user accesses the URL with the token he can enter a new password.
-
-### Using the "remember me" functionality ###
-
-To use the "remember me" checkbox which sets a cookie on the login page you will need to add the RememberMe component to the AppController or the controllers you want to auto-login the user again based on the cookie.
-
+Model code:
 ```php
-public $components = array(
-	'Users.RememberMe'
+class Article extends AppModel {
+
+	public $actsAs = array('Search.Searchable');
+	public $belongsTo = array('User');
+	public $hasAndBelongsToMany = array('Tag' => array('with' => 'Tagged'));
+
+	public $filterArgs = array(
+		'title' => array('type' => 'like'),
+		'status' => array('type' => 'value'),
+		'blog_id' => array('type' => 'value'),
+		'search' => array('type' => 'like', 'field' => 'Article.description'),
+		'range' => array('type' => 'expression', 'method' => 'makeRangeCondition', 'field' => 'Article.views BETWEEN ? AND ?'),
+		'username' => array('type' => 'like', 'field' => array('User.username', 'UserInfo.first_name')),
+		'tags' => array('type' => 'subquery', 'method' => 'findByTags', 'field' => 'Article.id'),
+		'filter' => array('type' => 'query', 'method' => 'orConditions'),
+		'enhanced_search' => array('type' => 'like', 'encode' => true, 'before' => false, 'after' => false, 'field' => array('ThisModel.name', 'OtherModel.name')),
+	);
+
+	public function findByTags($data = array()) {
+		$this->Tagged->Behaviors->attach('Containable', array('autoFields' => false));
+		$this->Tagged->Behaviors->attach('Search.Searchable');
+		$query = $this->Tagged->getQuery('all', array(
+			'conditions' => array('Tag.name'  => $data['tags']),
+			'fields' => array('foreign_key'),
+			'contain' => array('Tag')
+		));
+		return $query;
+	}
+
+	public function orConditions($data = array()) {
+		$filter = $data['filter'];
+		$cond = array(
+			'OR' => array(
+				$this->alias . '.title LIKE' => '%' . $filter . '%',
+				$this->alias . '.body LIKE' => '%' . $filter . '%',
+			));
+		return $cond;
+	}
+}
+```
+Associated snippet for the controller class:
+```php
+class ArticlesController extends AppController {
+	public $components = array('Search.Prg');
+
+	public $presetVars = true; // using the model configuration
+
+	public function find() {
+		$this->Prg->commonProcess();
+		$this->Paginator->settings['conditions'] = $this->Article->parseCriteria($this->Prg->parsedParams());
+		$this->set('articles', $this->Paginator->paginate());
+	}
+}
+```
+or verbose (and overriding the model configuration):
+```php
+class ArticlesController extends AppController {
+	public $components = array('Search.Prg');
+
+	public $presetVars = array(
+		'title' => array('type' => 'value'),
+		'status' => array('type' => 'checkbox'),
+		'blog_id' => array('type' => 'lookup', 'formField' => 'blog_input', 'modelField' => 'title', 'model' => 'Blog')
+	);
+
+	public function find() {
+		$this->Prg->commonProcess();
+		$this->Paginator->settings['conditions'] = $this->Article->parseCriteria($this->Prg->parsedParams());
+		$this->set('articles', $this->Paginator->paginate());
+	}
+}
+```
+The `find.ctp` view is the same as `index.ctp` with the addition of the search form:
+```php
+echo $this->Form->create('Article', array(
+	'url' => array_merge(array('action' => 'find'), $this->params['pass'])
+));
+echo $this->Form->input('title', array('div' => false));
+echo $this->Form->input('blog_id', array('div' => false, 'options' => $blogs));
+echo $this->Form->input('status', array('div' => false, 'multiple' => 'checkbox', 'options' => array('open', 'closed')));
+echo $this->Form->input('username', array('div' => false));
+echo $this->Form->submit(__('Search'), array('div' => false));
+echo $this->Form->end();
+```
+In this example on model level shon example of search by OR condition. For this purpose defined method orConditions and added filter arg `array('name' => 'filter', 'type' => 'query', 'method' => 'orConditions')`.
+
+## Advanced usage ##
+```php
+public $filterArgs = array(
+	// match results with `%searchstring`:
+	'search_exact_beginning' => array('type' => 'like', 'encode' => true, 'before' => true, 'after' => false),
+	// match results with `searchstring%`:
+	'search_exact_end' => array('type' => 'like', 'encode' => true, 'before' => false, 'after' => true),
+	// match results with `__searchstring%`:
+	'search_special_like' => array('type' => 'like', 'encode' => true, 'before' => '__', 'after' => '%'),
+	// use custom wildcards in the frontend (instead of * and ?):
+	'search_custom_like' => array('type' => 'like', 'encode' => true, 'before' => false, 'after' => false, 'wildcardAny' => '%', 'wildcardOne' => '_'),
+	// use and/or connectors ('First + Second, Third'):
+	'search_with_connectors' => array('type' => 'like', 'field' => 'Article.title', 'connectorAnd' => '+', 'connectorOr' => ',')
 );
 ```
+### `emptyValue` default values to allow search for "not any of the below"
 
-If you are using another user model than 'User' you'll have to configure it:
-
-	public $components = array(
-		'Users.RememberMe' => array(
-			'userModel' => 'AppUser');
-
-And add this line
-
+Let's say we have categories and a dropdown list to select any of those or "empty = ignore this filter". But what if we also want to have an option to find all non-categorized items?
+With "default 0 NOT NULL" fields this works as we can use 0 here explicitly:
 ```php
-$this->RememberMe->restoreLoginFromCookie()
+		$categories = $this->Model->Category->find('list');
+		array_unshift($categories, '- not categorized -'); // before passing it on to the view (the key will be 0, not '' as the ignore-filter key will be)
 ```
-
-to your controllers beforeFilter() callack
-
+But for char36 foreign keys or "default NULL" fields this does not work. The posted empty string will result in the omitting of the rule.
+That's where `emptyValue` comes into play.
 ```php
-public function beforeFilter() {
-	parent::beforeFilter();
-	$this->RememberMe->restoreLoginFromCookie();
-}
-```
-
-The code will read the login credentials from the cookie and log the user in based on that information. Note that you have to use CakePHPs AuthComponent or an aliased Component implementing the same interface as AuthComponent.
-
-## How to extend the plugin ##
-
-### Changing the default "from" email setting ###
-
-To change the plugins default "from" setting for outgoing emails put this into your bootstrap.php
-
-```php
-Configure::write('App.defaultEmail', your@email.com);
-```
-
-If not configured it will use 'noreply@' . env('HTTP_HOST'); as default from email address.
-
-### Extending the controller ###
-
-Declare the controller class
-
-```php
-App::uses('UsersController', 'Users.Controller');
-class AppUsersController extends UsersController {
-	public $name = 'AppUsers';
-}
-```
-
-In the case you want to extend also the user model it's required to set the right user class in the beforeFilter() because the controller will use the inherited model which would be Users.User.
-
-```php
-public function beforeFilter() {
-	parent::beforeFilter();
-	$this->User = ClassRegistry::init('AppUser');
-	$this->set('model', 'AppUser');
-}
-```
-
-You can overwrite the render() method to fall back to the plugin views in the case you want to use some of them
-
-```php
-public function render($view = null, $layout = null) {
-	if (is_null($view)) {
-		$view = $this->action;
-	}
-	$viewPath = substr(get_class($this), 0, strlen(get_class($this)) - 10);
-	if (!file_exists(APP . 'View' . DS . $viewPath . DS . $view . '.ctp')) {
-		$this->plugin = 'Users';
-	} else {
-		$this->viewPath = $viewPath;
-	}
-	return parent::render($view, $layout);
-}
-```
-
-Note: Depending on the CakePHP version you are using, you might need to bring a copy of the Views used in the plugin to your AppUsers view directory
-
-### Overwriting the default auth settings provided by the plugin
-
-To use the basics the plugin already offers but changing some of the settings overwrite the _setupAuth() method in the extending controller.
-
-```php
-protected function _setupAuth() {
-	parent::_setupAuth();
-	$this->Auth->loginRedirect = array(
-		'plugin' => null,
-		'admin' => false,
-		'controller' => 'app_users',
-		'action' => 'login'
+// controller
+public $presetVars = array(
+	'category_id' => array(
+		'allowEmpty' => true,
+		'emptyValue' => '0',
 	);
+);
+```
+This way we assign '' for 0, and "ignore" for '' on POST, and the opposite for presetForm().
+
+Note: This only works if you use `allowEmpty` here. If you fail to do that it will always trigger the lookup here.
+
+### `defaultValue` default values to allow search in default case
+```php
+// model
+public $filterArgs = array(
+	'some_related_table_id' => array('type' => 'value', 'defaultValue' => 'none'),
+);
+```
+This will always trigger the filter for it (looking for string `none` in the table field).
+
+## Full example for model/controller configuration with overriding
+```php
+// model
+public $filterArgs = array(
+	'some_related_table_id' => array('type' => 'value'),
+	'search'=> array('type' => 'like', 'encode' => true, 'before' => false, 'after' => false, 'field' => array('ThisModel.name', 'OtherModel.name')),
+	'name'=> array('type' => 'query', 'method' => 'searchNameCondition')
+);
+
+public function searchNameCondition($data = array()) {
+	$filter = $data['name'];
+	$cond = array(
+		'OR' => array(
+			$this->alias . '.name LIKE' => '' . $this->formatLike($filter) . '',
+			$this->alias . '.invoice_number LIKE' => '' . $this->formatLike($filter) . '',
+	));
+	return $cond;
 }
+
+
+// controller (dry setup, only override/extend what is necessary)
+public $presetVars = array(
+	'some_related_table_id' => true,
+	'search' => true,
+	'name'=> array( // overriding/extending the model defaults
+		'type' => 'value',
+		'encode' => true
+	),
+);
+
+
+// search example with wildcards in the view for field `search` 20??BE* => matches 2011BES and 2012BETR etc
 ```
+## Behavior and Model configuration ##
 
-If you want to disable it simply overwrite it without any body
+All search fields need to be configured in the Model::filterArgs array.
 
+Each filter record should contain array with several keys:
+
+* name - the parameter stored in Model::data. In the example above the 'search' name used to search in the Article.description field (can be ommited if they key is the name).
+* type - one of supported search types described below.
+* field - Real field name used for search should be used.
+* method - model method name or behavior used to generate expression, subquery or query.
+* allowEmpty - optional parameter used to allow generating conditions even if the filter field value is empty. It is often used when you specifically allow a lookup for an empty string or if conditions need to be generated based on several other fields.
+
+### Supported types of search ###
+
+* 'like' type of search used when you need to search using 'LIKE' sql keyword.
+* 'value' type of search very useful when you need exact compare. So if you have select box in your view as a filter than you definitely should  use value type.
+* 'expression' type useful if you want to add condition that will generate by some method, and condition field contain several parameter like in previous sample used for 'range'. Field here contains 'Article.views BETWEEN ? AND ?' and Article::makeRangeCondition returns array of two values.
+* 'subquery' type useful if you want to add condition that looks like FIELD IN (SUBQUERY), where SUBQUERY generated by method declared in this filter configuration.
+* 'query' most universal type of search. In this case method should return array(that contain condition of any complexity). Returned condition will joined to whole search conditions.
+
+## Post, redirect, get concept ##
+
+Post/Redirect/Get (PRG) is a common design pattern for web developers to help avoid certain duplicate form submissions and allow user agents to behave more intuitively with bookmarks and the refresh button.
+
+When a web form is submitted to a server through an HTTP POST request, a web user that attempts to refresh the server response in certain user agents can cause the contents of the original HTTP POST request to be resubmitted, possibly causing undesired results.
+To avoid this problem, it is possible to use the PRG pattern instead of returning the web page directly.
+The POST operation returns a redirection command, instructing the browser to load a different page (or same page) using an HTTP GET request.
+See the [Wikipedia article](http://en.wikipedia.org/wiki/Post/Redirect/Get) for more information.
+
+## PRG Component features ##
+
+The Prg component implements the PRG pattern so you can use it separately from search tasks when you need it.
+
+The component maintains passed and named parameters or query string variables that come as POST parameters and transform it to the named during redirect, and sets Controller::data back if the GET method was used during component call.
+
+Most importantly the component acts as the glue between your app and the searchable behavior.
+
+You can attach the component to your controller, here is an example
+using defaults alreay set in the component itself:
 ```php
-protected function _setupAuth() {
-}
+public $components = array('Search.Prg' => array(
+	//Options for preset form method
+	'presetForm' => array(
+		'paramType' => 'named' // or 'querystring'
+		'model' => null // or a default model name
+	),
+	//Options for commonProcess method
+	'commonProcess' => array(
+		'formName' => null,
+		'keepPassed' => true,
+		'action' => null,
+		'modelMethod' => 'validateSearch',
+		'allowedParams' => array(),
+		'paramType' => 'named', // or 'querystring'
+		'filterEmpty' => false
+	)
+));
 ```
+### Controller configuration ###
 
-or you can use the configuration settings to disable it, for example in your boostrap.php
+All search fields parameters need to configure in the Controller::presetVars array (if you didn't yet in the model).
 
-```php
-Configure::write('Users.disableDefaultAuth');
-```
+Each preset variable is a array record that contains next keys:
 
-### Extending the model ###
+* field      - field that defined in the view search form.
+* type       - one of search types:
+* value - should used for value that does not require any processing,
+* checkbox - used for checkbox fields in view (Prg component pack and unpack checkbox values when pass it through the get named action).
+* lookup - this type used when you have autocomplete lookup field implemented in your view. This lookup field is a text field, and also you have hidden field id value. In this case component will fill both text and id values.
+* model      - param that specifies what model used in Controller::data at a key for this field.
+* formField  - field in the form that contain text, and will populated using model.modelField based on field value.
+* modelField - field in the model that contain text, and will used to fill formField in view.
+* encode     - boolean, by default false. If you want to use search strings in URL's with special characters like % or / you need to use encoding
+* empty     - boolean, by default false. If you want to omit this field in the PRG url if no value has been given (shorter urls).
 
-Declare the model 
+Note: Those can also be configured in the model itself (to keep it DRY). You can then set `$presetVar = true` then in the controller to use the model ones (see the example above). You can still use define the keys here where you want to overwrite certain settings.
+When using named params instead of query strings it is recommended to always use `encode => true` in combination with search strings (custom text input) to avoid url-breaking.
 
-```php
-App::uses('User', 'Users.Model');
-class AppUser extends User {
-	public $useTable = 'users';
-}
-```
+### Prg::commonProcess method usage ###
 
-It's important to override the AppUser::useTable property with the 'users' table.
+The `commonProcess` method defined in the Prg component allows you to inject search in any index controller with just 1-2 lines of additional code.
 
-You can override/extend all methods or properties like validation rules to suit your needs.
+You should pass model name that used for search. By default it is default Controller::modelClass model.
 
-### Routes for pretty URLs ###
+Additional options parameters:
 
-To remove the second users from /users/users in the url you can use routes.
-
-The plugin itself comes with a routes file but you need to explicitly load them. 
-
-```php
-CakePlugin::load('Users', array('routes' => true));
-```
-
-List of the used routes:
-
-```php
-Router::connect('/users', array('plugin' => 'users', 'controller' => 'users'));
-Router::connect('/users/index/*', array('plugin' => 'users', 'controller' => 'users'));
-Router::connect('/users/:action/*', array('plugin' => 'users', 'controller' => 'users'));
-Router::connect('/users/users/:action/*', array('plugin' => 'users', 'controller' => 'users'));
-Router::connect('/login/*', array('plugin' => 'users', 'controller' => 'users', 'action' => 'login'));
-Router::connect('/logout/*', array('plugin' => 'users', 'controller' => 'users', 'action' => 'logout'));
-Router::connect('/register/*', array('plugin' => 'users', 'controller' => 'users', 'action' => 'add'));
-```
-
-If you're extending the plugin remove the plugin from the route by setting it to null and replace the controller with your controller extending the plugins users controller.
-
-Feel free to change the routes here or add others as you need for your application.
-
-### Email Templates
-
-To modify the templates as needed copy them to
-
-	/app/View/Plugin/Users/Emails/
-
-Note that you will have to overwrite any view that is linking to the plugin like the email verification email.
-
-## Configuration options
-
-### Disable Slugs 
-
-If the Utils plugin is present the users model will auto attach and use the sluggable behavior.
-
-To not create slugs for a new user records put this in your configuration: Configure::write('Users.disableSlugs', true);
-
-### Email configuration
-
-The plugin uses the $default email configuration (should be present in your Config/email.php file), but you can override it using
-
-```php
-Configure::write('Users.emailConfig', 'default');
-```
-
-## Roles Management
-
-You can add Users.roles on bootstrap.php file and these roles will be used on Admin Add / Edit pages. i.e:
-
-```php
-Configure::write('Users.roles', array('admin' => 'Admin', 'registered' => 'Registered'));
-```
-
-If you don't specify roles it will use 'admin' role (if is_admin is checked) or 'registered' role otherwise. You can override 'registered role setting Users.defaultRole on bootstrap.php. i.e:
-
-```php
-Configure::write('Users.defaultRole', 'user_registered');
-```
-
-## Enabling / Disabling Registration
-
-Some application won't need to have registration enable so you can define Users.allowRegistration on bootstrap.php to enable / disable registration. By default registration will be enabled.
-
-## Configuration options
-
-The configuration settings can be written by using the Configure class.
-
-	Users.disableDefaultAuth
-
-Disables/enables the default auth setup that is implemented in the plugins UsersController::_setupAuth()
-
-	Users.allowRegistration
-
-Disables/enables the user registration.
-
-	Users.roles
-
-Optional array of user roles if you need it. This is not activly used by the plugin by default.
-
-	Users.sendPassword
-
-Disables/enables the password reset functionality
-
-	Users.emailConfig
-
-Email configuration settings array used by this plugin
-
-## Events ##
-
-Events follow these conventions:
-
-	Users.Controller.Users.someCallBack
-	Users.Model.User.someCallBack
-	...
-
-Triggered events are:
-
- * Users.Controller.Users.beforeRegister
- * Users.Controller.Users.afterRegister
- * Users.Controller.Users.beforeLogin
- * Users.Controller.Users.afterLogin
- * Users.Model.User.beforeRegister
- * Users.Model.User.afterRegister
+* form        - search form name.
+* keepPassed  - parameter that describe if you need to merge passedArgs to Get url where you will Redirect after Post
+* action      - sometimes you want to have different actions for post and get. In this case you can define get action using this parameter.
+* modelMethod - method, used to filter named parameters, passed from form. By default it is validateSearch, and it defined in Searchable behavior.
 
 ## Requirements ##
 
 * PHP version: PHP 5.2+
-* CakePHP version: Cakephp 2.0
-* [CakeDC Utils plugin](http://github.com/CakeDC/utils)
-* [CakeDC Search plugin](http://github.com/CakeDC/search)
+* CakePHP version: Cakephp 2.1 Stable
 
 ## Support ##
-
-For support and feature request, please visit the [Users Plugin Support Site](http://cakedc.lighthouseapp.com/projects/60126-users-plugin/).
 
 For more information about our Professional CakePHP Services please visit the [Cake Development Corporation website](http://cakedc.com).
 
 ## Branch strategy ##
 
-The master branch holds the STABLE latest version of the plugin. 
-Develop branch is UNSTABLE and used to test new features before releasing them. 
+The master branch holds the STABLE latest version of the plugin.
+Develop branch is UNSTABLE and used to test new features before releasing them.
 
 Previous maintenance versions are named after the CakePHP compatible version, for example, branch 1.3 is the maintenance version compatible with CakePHP 1.3.
 All versions are updated with security patches.
 
 ## Contributing to this Plugin ##
 
-Please feel free to contribute to the plugin with new issues, requests, unit tests and code fixes or new features. If you want to contribute some code, create a feature branch from develop, and send us your pull request. Unit tests for new features and issues detected are mandatory to keep quality high. 
+Please feel free to contribute to the plugin with new issues, requests, unit tests and code fixes or new features. If you want to contribute some code, create a feature branch from develop, and send us your pull request. Unit tests for new features and issues detected are mandatory to keep quality high.
+
 
 ## License ##
 
-Copyright 2009-2013, [Cake Development Corporation](http://cakedc.com)
+Copyright 2009-2012, [Cake Development Corporation](http://cakedc.com)
 
 Licensed under [The MIT License](http://www.opensource.org/licenses/mit-license.php)<br/>
 Redistributions of files must retain the above copyright notice.
 
 ## Copyright ###
 
-Copyright 2009-2013<br/>
+Copyright 2009-2012<br/>
 [Cake Development Corporation](http://cakedc.com)<br/>
 1785 E. Sahara Avenue, Suite 490-423<br/>
 Las Vegas, Nevada 89104<br/>
 http://cakedc.com<br/>
-
