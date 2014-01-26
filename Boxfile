@@ -22,11 +22,11 @@ web1:
   before_deploy:
     - "app/Console/cake Migrations.migration run all -p Migrations"
     - "app/Console/cake Migrations.migration run all --plugin Users"
-    - "app/Console/cake Migrations.migration generate -f"
-  after_deploy:
+  safter_deploy:
     - "rm -rf app/tmp/cache/models/*"
     - "rm -rf app/tmp/cache/persistent/*"
     - "rm -rf app/tmp/cache/views/*"
+  php_zlib_output_compression: On
 db1:
   name: cakephp
   type: mysql
