@@ -20,8 +20,8 @@ web1:
     - "mv pagoda/database.php app/Config/database.php"
     - "mv pagoda/core.php app/Config/core.php"
   before_deploy:
-    - "app/Console/cake Migrations.migration run all -p Migrations"
-    - "app/Console/cake Migrations.migration run all --plugin Users"
+    - "bash app/Console/cake Migrations.migration run all -p Migrations"
+    - "bash app/Console/cake Migrations.migration run all --plugin Users"
   after_deploy:
     - "rm -rf app/tmp/cache/models/*"
     - "rm -rf app/tmp/cache/persistent/*"
