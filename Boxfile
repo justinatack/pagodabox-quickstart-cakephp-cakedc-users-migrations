@@ -22,7 +22,7 @@ web1:
   before_deploy:
     - "app/Console/cake Migrations.migration run all -p Migrations"
     - "app/Console/cake Migrations.migration run all --plugin Users"
-  safter_deploy:
+  after_deploy:
     - "rm -rf app/tmp/cache/models/*"
     - "rm -rf app/tmp/cache/persistent/*"
     - "rm -rf app/tmp/cache/views/*"
