@@ -110,8 +110,8 @@ class M49c3417a54874a9d276811502cedc421 extends CakeMigration {
 	        $data['Users'][0]['last_action'] = NULL;
 	        $data['Users'][0]['is_admin'] = 1;
 	        $data['Users'][0]['role'] = 'registered';
-	        $data['Users'][0]['created'] = '2014-01-01 00:00:00';
-	        $data['Users'][0]['modified'] = '2014-01-01 00:00:00';
+	        $data['Users'][0]['created'] = date("Y-m-d H:i:s");
+	        $data['Users'][0]['modified'] = NULL;
 	        $Users->create();
 	        if ($Users->saveAll($data)){
 	            echo "Users table has been initialized";
