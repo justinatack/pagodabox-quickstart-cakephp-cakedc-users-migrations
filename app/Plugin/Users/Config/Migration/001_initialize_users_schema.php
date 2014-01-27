@@ -98,8 +98,7 @@ class M49c3417a54874a9d276811502cedc421 extends CakeMigration {
 	        $data['Users']['id'] = '52e5a1be-4440-4a24-8702-fa7165004c76';
 	        $data['Users']['username'] = 'admin';
 	        $data['Users']['slug'] = 'admin';
-	        //$data['Users']['password'] = Security::hash('password', null, true); // Password = password
-	        $data['Users']['password'] = 'c6aca6312bc0907b4caa1e19e620abb888f2bf9a'; // Password = password
+	        $data['Users']['password'] = Security::hash('password', null, true); // Password = password
 	        $data['Users']['password_token'] = NULL;
 	        $data['Users']['email'] = 'admin@example.com';
 	        $data['Users']['email_verified'] = 1;
