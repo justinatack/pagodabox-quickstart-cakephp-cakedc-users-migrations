@@ -93,7 +93,32 @@ class M49c3417a54874a9d276811502cedc421 extends CakeMigration {
  * @param string $direction, up or down direction of migration process
  */
 	public function after($direction) {
-		return true;
+		$Users = ClassRegistry::init('Users');
+	    if ($direction == 'up') { //add 2 records to statues table
+	        $data['Users'][0]['id'] = '52e5a1be-4440-4a24-8702-fa7165004c76';
+	        $data['Users'][0]['username'] = 'admin';
+	        $data['Users'][0]['slug'] = 'admin';
+	        $data['Users'][0]['password'] = 'c6aca6312bc0907b4caa1e19e620abb888f2bf9a'; // Password = password
+	        $data['Users'][0]['password_token'] = NULL;
+	        $data['Users'][0]['email'] = 'admin@example.com';
+	        $data['Users'][0]['email_verified'] = 1;
+	        $data['Users'][0]['email_token'] = NULL;
+	        $data['Users'][0]['email_token_expires'] = NULL;
+	        $data['Users'][0]['tos'] = 1;
+	        $data['Users'][0]['active'] = 1;
+	        $data['Users'][0]['last_login'] = NULL;
+	        $data['Users'][0]['last_action'] = NULL;
+	        $data['Users'][0]['is_admin'] = 1;
+	        $data['Users'][0]['role'] = 'registered';
+	        $data['Users'][0]['created'] = DATETIME;
+	        $data['Users'][0]['modified'] = DATETIME;
+	        $Users->create();
+	        if ($Users->saveAll($data)){
+	            echo "Users table has been initialized";
+	        }
+	    } else if ($direction == 'down') {
+	        //do more work here
+	    }
 	}
 
 }
